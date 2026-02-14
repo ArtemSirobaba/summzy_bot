@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyChatLinkPreviewPreset,
+  getChatLinkPreviewOverrides,
   getDefaultLinkPreviewFetchOptions,
   getEffectiveLinkPreviewFetchOptions,
   parseLinkPreviewPreset,
   resetChatLinkPreviewOptions,
   setChatLinkPreviewOption,
 } from "../src/services/document";
+
+const OPTION_OVERRIDE_TTL_MS = 6 * 60 * 60 * 1000;
 
 test("preview option override applies per chat", () => {
   const chatId = 991001;
@@ -44,4 +47,24 @@ test("preview presets can be parsed and applied", () => {
 
   const balancedOptions = applyChatLinkPreviewPreset(chatId, "balanced");
   assert.deepEqual(balancedOptions, getDefaultLinkPreviewFetchOptions());
+});
+
+test("preview option override expires after ttl", () => {
+  const originalNow = Date.now;
+  let now = 1_000_000_000_000;
+  Date.now = () => now;
+
+  try {
+    const chatId = 991004;
+    resetChatLinkPreviewOptions(chatId);
+    setChatLinkPreviewOption(chatId, "firecrawl", "always");
+    assert.equal(getChatLinkPreviewOverrides(chatId).firecrawl, "always");
+
+    now += OPTION_OVERRIDE_TTL_MS + 1;
+    const effective = getEffectiveLinkPreviewFetchOptions(chatId);
+    assert.equal(effective.firecrawl, getDefaultLinkPreviewFetchOptions().firecrawl);
+    assert.deepEqual(getChatLinkPreviewOverrides(chatId), {});
+  } finally {
+    Date.now = originalNow;
+  }
 });

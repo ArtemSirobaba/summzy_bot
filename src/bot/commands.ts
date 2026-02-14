@@ -15,7 +15,7 @@ import {
 } from "../services/document";
 
 const START_MESSAGE = [
-  "Welcome to Summarize Bot.",
+  "Welcome to Summzy.",
   "",
   "Send me any URL. I will summarize it, then you can ask follow-up questions about that document.",
   "",
@@ -79,6 +79,7 @@ export async function handleNewChat(ctx: CommandContext<Context>) {
 
   const existed = hasSession(chatId);
   clearSession(chatId);
+  resetChatLinkPreviewOptions(chatId);
 
   await ctx.reply(
     existed

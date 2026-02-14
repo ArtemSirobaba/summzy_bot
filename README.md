@@ -1,4 +1,4 @@
-# Summarize Telegram Bot
+# Summzy Telegram Bot
 
 ![Summzy Logo](public/summzy.png)
 

@@ -16,12 +16,13 @@ import { chunkText } from "../utils/chunk";
 import { replyMarkdownV2WithFallback } from "../utils/telegram-format";
 import { extractFirstUrl } from "../utils/url";
 
-function getErrorMessage(error: unknown): string {
+function logHandlerError(scope: string, error: unknown): void {
   if (error instanceof Error) {
-    return error.message;
+    console.error(`[message:${scope}] ${error.message}`, error);
+    return;
   }
 
-  return "Unknown error";
+  console.error(`[message:${scope}] Unknown error`, error);
 }
 
 async function replyInChunks(ctx: Context, text: string): Promise<void> {
@@ -58,9 +59,14 @@ export async function handleMessage(ctx: Context): Promise<void> {
 
       if (summary) {
         await replyInChunks(ctx, summary);
+      } else {
+        await ctx.reply(
+          "I could not generate a usable summary for that link. Please try another URL."
+        );
       }
     } catch (error) {
-      await ctx.reply(`Failed to summarize URL: ${getErrorMessage(error)}`);
+      logHandlerError("summarize", error);
+      await ctx.reply("Failed to summarize that URL. Please try again in a moment.");
     }
 
     return;
@@ -92,8 +98,13 @@ export async function handleMessage(ctx: Context): Promise<void> {
 
     if (answer) {
       await replyInChunks(ctx, answer);
+    } else {
+      await ctx.reply(
+        "I could not produce an answer from the current context. Please rephrase your question."
+      );
     }
   } catch (error) {
-    await ctx.reply(`Failed to answer question: ${getErrorMessage(error)}`);
+    logHandlerError("qa", error);
+    await ctx.reply("Failed to answer your question right now. Please try again.");
   }
 }

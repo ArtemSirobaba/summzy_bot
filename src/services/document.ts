@@ -142,7 +142,38 @@ const presetOverrides: Readonly<
   },
 };
 
-const chatOptionOverrides = new Map<number, Partial<FetchLinkContentOptions>>();
+interface ChatOptionOverrideEntry {
+  options: Partial<FetchLinkContentOptions>;
+  updatedAt: number;
+}
+
+const chatOptionOverrides = new Map<number, ChatOptionOverrideEntry>();
+const OPTION_OVERRIDE_TTL_MS = 6 * 60 * 60 * 1000;
+const MAX_CHAT_OVERRIDES = 1000;
+
+function pruneExpiredChatOptionOverrides(now: number = Date.now()): void {
+  for (const [chatId, entry] of chatOptionOverrides.entries()) {
+    if (now - entry.updatedAt > OPTION_OVERRIDE_TTL_MS) {
+      chatOptionOverrides.delete(chatId);
+    }
+  }
+}
+
+function pruneOldestChatOptionOverrides(maxEntries: number = MAX_CHAT_OVERRIDES): void {
+  if (chatOptionOverrides.size <= maxEntries) {
+    return;
+  }
+
+  const sortedByLastUpdate = [...chatOptionOverrides.entries()].sort(
+    (a, b) => a[1].updatedAt - b[1].updatedAt
+  );
+  const removeCount = chatOptionOverrides.size - maxEntries;
+
+  for (let index = 0; index < removeCount; index += 1) {
+    const [chatId] = sortedByLastUpdate[index];
+    chatOptionOverrides.delete(chatId);
+  }
+}
 
 function isOneOf<T extends string>(
   value: string,
@@ -371,14 +402,16 @@ export function getDefaultLinkPreviewFetchOptions(): FetchLinkContentOptions {
 export function getChatLinkPreviewOverrides(
   chatId: number
 ): Partial<FetchLinkContentOptions> {
-  return { ...(chatOptionOverrides.get(chatId) ?? {}) };
+  pruneExpiredChatOptionOverrides();
+  const entry = chatOptionOverrides.get(chatId);
+  return { ...(entry?.options ?? {}) };
 }
 
 export function getEffectiveLinkPreviewFetchOptions(
   chatId: number
 ): FetchLinkContentOptions {
-  const overrides = chatOptionOverrides.get(chatId);
-  if (!overrides) {
+  const overrides = getChatLinkPreviewOverrides(chatId);
+  if (Object.keys(overrides).length === 0) {
     return getDefaultLinkPreviewFetchOptions();
   }
 
@@ -438,12 +471,17 @@ export function setChatLinkPreviewOption(
     };
   }
 
-  const existing = chatOptionOverrides.get(chatId) ?? {};
+  pruneExpiredChatOptionOverrides();
+  const existing = chatOptionOverrides.get(chatId)?.options ?? {};
   const nextOverrides: Partial<FetchLinkContentOptions> = {
     ...existing,
     [key]: parsed.value,
   };
-  chatOptionOverrides.set(chatId, nextOverrides);
+  chatOptionOverrides.set(chatId, {
+    options: nextOverrides,
+    updatedAt: Date.now(),
+  });
+  pruneOldestChatOptionOverrides();
 
   return {
     ok: true,
@@ -462,8 +500,12 @@ export function applyChatLinkPreviewPreset(
   }
 
   chatOptionOverrides.set(chatId, {
-    ...presetOverrides[preset],
+    options: {
+      ...presetOverrides[preset],
+    },
+    updatedAt: Date.now(),
   });
+  pruneOldestChatOptionOverrides();
   return getEffectiveLinkPreviewFetchOptions(chatId);
 }
 

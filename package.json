@@ -2,12 +2,12 @@
 	"name": "summzy",
 	"version": "1.0.0",
 	"description": "AI-powered summaries and chat about the summarized document",
-	"main": "dist/index.js",
+	"main": "dist/index.mjs",
 	"type": "module",
 	"scripts": {
-		"start": "node dist/index.js",
+		"start": "node dist/index.mjs",
 		"dev": "tsx src/index.ts",
-		"build": "tsc",
+		"build": "tsdown",
 		"typecheck": "tsc --noEmit",
 		"test": "node --test --import tsx tests/**/*.test.ts"
 	},
@@ -22,6 +22,7 @@
 	"license": "MIT",
 	"devDependencies": {
 		"@types/node": "^25.2.3",
+		"tsdown": "^0.20.3",
 		"tsx": "^4.21.0",
 		"typescript": "^5.9.3"
 	},

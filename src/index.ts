@@ -6,14 +6,21 @@ const bot = createBot();
 const defaultModel = getActiveModel();
 const availableModels = getAvailableModels();
 
-console.log("Starting Telegram summarize bot...");
-console.log(
-  `Default model: ${defaultModel.provider}/${defaultModel.modelId}`
-);
-console.log(
-  `Available models: ${availableModels
-    .map((model) => `${model.provider}/${model.modelId}`)
-    .join(", ")}`
-);
+async function main(): Promise<void> {
+  console.log("Starting Summzy Telegram bot...");
+  console.log(
+    `Default model: ${defaultModel.provider}/${defaultModel.modelId}`
+  );
+  console.log(
+    `Available models: ${availableModels
+      .map((model) => `${model.provider}/${model.modelId}`)
+      .join(", ")}`
+  );
 
-bot.start();
+  await bot.start();
+}
+
+main().catch((error) => {
+  console.error("Failed to start bot:", error);
+  process.exit(1);
+});
