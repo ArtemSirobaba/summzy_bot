@@ -41,6 +41,7 @@ When you send a new URL, current document context is replaced automatically.
   - `OPENROUTER_API_KEY`
   - `OPENAI_API_KEY`
   - `ANTHROPIC_API_KEY`
+  - `MINIMAX_API_KEY`
   - `XAI_API_KEY`
 
 ## Setup
@@ -60,8 +61,9 @@ pnpm dev
 - `OPENROUTER_API_KEY` (optional, but at least one provider key is required)
 - `OPENAI_API_KEY` (optional)
 - `ANTHROPIC_API_KEY` (optional)
+- `MINIMAX_API_KEY` (optional)
 - `XAI_API_KEY` (optional)
-- `DEFAULT_PROVIDER` (optional: `openrouter`, `openai`, `anthropic`, `xai`)
+- `DEFAULT_PROVIDER` (optional: `openrouter`, `openai`, `anthropic`, `minimax`, `xai`)
 - `DEFAULT_MODEL` (optional)
 - `TELEGRAM_USER_ID` (optional single admin user id for preview controls and summary throttle exemption)
 - `TELEGRAM_USER_IDS` (optional JSON array like `[123,456]` or comma-separated `123,456`; same admin uses)
@@ -86,7 +88,7 @@ pnpm dev
 - Available providers are discovered from keys present in `.env`.
 - Default model selection:
   1. Use `DEFAULT_PROVIDER` + `DEFAULT_MODEL` when valid and available.
-  2. Otherwise use first available provider in this order: `openrouter`, `openai`, `anthropic`, `xai`.
+  2. Otherwise use first available provider in this order: `openrouter`, `openai`, `anthropic`, `minimax`, `xai`.
 
 ## Project structure
 ```txt
@@ -101,6 +103,7 @@ src/
   models/
     anthropic.ts
     index.ts
+    minimax.ts
     openai.ts
     openrouter.ts
     xai.ts

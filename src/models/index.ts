@@ -1,11 +1,17 @@
 import type { LanguageModel } from "ai";
 import { env } from "../config/env";
 import { anthropicModel } from "./anthropic";
+import { minimaxModel } from "./minimax";
 import { openaiModel } from "./openai";
 import { openrouterModel } from "./openrouter";
 import { xaiModel } from "./xai";
 
-export type ProviderName = "openrouter" | "openai" | "anthropic" | "xai";
+export type ProviderName =
+  | "openrouter"
+  | "openai"
+  | "anthropic"
+  | "minimax"
+  | "xai";
 
 export interface ModelDescriptor {
   provider: ProviderName;
@@ -17,6 +23,7 @@ export interface ModelRegistryConfig {
   OPENROUTER_API_KEY?: string;
   OPENAI_API_KEY?: string;
   ANTHROPIC_API_KEY?: string;
+  MINIMAX_API_KEY?: string;
   XAI_API_KEY?: string;
   DEFAULT_PROVIDER?: ProviderName;
   DEFAULT_MODEL?: string;
@@ -26,6 +33,7 @@ const PROVIDER_PRIORITY: ProviderName[] = [
   "openrouter",
   "openai",
   "anthropic",
+  "minimax",
   "xai",
 ];
 
@@ -33,6 +41,7 @@ const DEFAULT_PROVIDER_MODELS: Record<ProviderName, string> = {
   openrouter: "openrouter/auto",
   openai: "gpt-4o-mini",
   anthropic: "claude-3-5-haiku-latest",
+  minimax: "MiniMax-M2.1",
   xai: "grok-3-mini",
 };
 
@@ -40,6 +49,7 @@ const PROVIDER_LABELS: Record<ProviderName, string> = {
   openrouter: "OpenRouter",
   openai: "OpenAI",
   anthropic: "Anthropic",
+  minimax: "MiniMax",
   xai: "xAI",
 };
 
@@ -54,6 +64,8 @@ function isProviderAvailable(
       return Boolean(config.OPENAI_API_KEY);
     case "anthropic":
       return Boolean(config.ANTHROPIC_API_KEY);
+    case "minimax":
+      return Boolean(config.MINIMAX_API_KEY);
     case "xai":
       return Boolean(config.XAI_API_KEY);
     default:
@@ -125,6 +137,8 @@ export function getModelByDescriptor(descriptor: ModelDescriptor): LanguageModel
       return openaiModel(descriptor.modelId);
     case "anthropic":
       return anthropicModel(descriptor.modelId);
+    case "minimax":
+      return minimaxModel(descriptor.modelId);
     case "xai":
       return xaiModel(descriptor.modelId);
     default:

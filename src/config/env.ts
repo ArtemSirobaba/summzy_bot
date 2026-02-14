@@ -1,7 +1,13 @@
 import "dotenv/config";
 import z from "zod";
 
-const ProviderSchema = z.enum(["openrouter", "openai", "anthropic", "xai"]);
+const ProviderSchema = z.enum([
+  "openrouter",
+  "openai",
+  "anthropic",
+  "minimax",
+  "xai",
+]);
 const CacheModeSchema = z.enum(["default", "bypass"]);
 const YoutubeTranscriptModeSchema = z.enum([
   "auto",
@@ -84,6 +90,7 @@ export const EnvSchema = z
     OPENROUTER_API_KEY: z.string().min(1).optional(),
     OPENAI_API_KEY: z.string().min(1).optional(),
     ANTHROPIC_API_KEY: z.string().min(1).optional(),
+    MINIMAX_API_KEY: z.string().min(1).optional(),
     XAI_API_KEY: z.string().min(1).optional(),
     DEFAULT_PROVIDER: ProviderSchema.optional(),
     DEFAULT_MODEL: z.string().min(1).optional(),
@@ -134,6 +141,7 @@ export const EnvSchema = z
       value.OPENROUTER_API_KEY ||
         value.OPENAI_API_KEY ||
         value.ANTHROPIC_API_KEY ||
+        value.MINIMAX_API_KEY ||
         value.XAI_API_KEY
     );
 
@@ -141,7 +149,7 @@ export const EnvSchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "At least one provider key is required: OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, or XAI_API_KEY",
+          "At least one provider key is required: OPENROUTER_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, MINIMAX_API_KEY, or XAI_API_KEY",
       });
     }
   })

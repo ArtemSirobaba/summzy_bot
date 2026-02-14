@@ -21,6 +21,15 @@ test("env applies default telegram max message length", () => {
   assert.equal(parsed.MAX_TELEGRAM_MESSAGE_LENGTH, 4000);
 });
 
+test("env accepts minimax as the only provider key", () => {
+  const parsed = parseEnv({
+    BOT_TOKEN: "123:test",
+    MINIMAX_API_KEY: "minimax-test",
+  } as NodeJS.ProcessEnv);
+
+  assert.equal(parsed.MINIMAX_API_KEY, "minimax-test");
+});
+
 test("env applies default link preview options", () => {
   const parsed = parseEnv({
     BOT_TOKEN: "123:test",

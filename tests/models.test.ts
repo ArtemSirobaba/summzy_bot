@@ -8,12 +8,13 @@ import {
 test("model registry exposes only configured providers", () => {
   const models = getAvailableModelsForConfig({
     OPENAI_API_KEY: "sk-test",
+    MINIMAX_API_KEY: "minimax-test",
     XAI_API_KEY: "xai-test",
   });
 
   assert.deepEqual(
     models.map((model) => model.provider),
-    ["openai", "xai"]
+    ["openai", "minimax", "xai"]
   );
 });
 
@@ -31,9 +32,9 @@ test("default model uses configured provider and model", () => {
 
 test("default model falls back to provider priority", () => {
   const selected = getDefaultModelForConfig({
-    ANTHROPIC_API_KEY: "sk-ant-test",
+    MINIMAX_API_KEY: "minimax-test",
     XAI_API_KEY: "xai-test",
   });
 
-  assert.equal(selected.provider, "anthropic");
+  assert.equal(selected.provider, "minimax");
 });
