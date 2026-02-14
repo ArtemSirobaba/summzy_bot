@@ -6,25 +6,32 @@ Telegram bot for:
 - summarizing a URL
 - chatting about the summarized document
 - resetting context with `/newchat`
+- using `/summzy <url>` in groups for explicit summarize trigger
 - tuning extraction behavior per chat (`/preview*` commands, admin-only)
 
 ## Core flow
-1. Send a URL.
-2. Bot fetches content and returns a concise summary.
-3. Ask follow-up questions about that document.
-4. Use `/newchat` to clear session and start over.
+1. Private chat: send a URL (or use `/summzy <url>`).
+2. Group chat: use `/summzy <url>`.
+3. Bot fetches content and returns a concise summary.
+4. Ask follow-up questions about that document.
+5. Use `/newchat` to clear session and start over.
 
 When you send a new URL, current document context is replaced automatically.
 
 ## Commands
 - `/start`
 - `/help`
+- `/summzy <url>` - summarize a URL (required in group/supergroup chats)
 - `/newchat`
 - `/features` - show env-driven extractor capabilities (admin-only)
 - `/preview` - show active extraction options for current chat (admin-only)
 - `/previewset <key> <value>` - override one extraction option (admin-only)
 - `/previewpreset <fast|balanced|deep|media>` - apply a preset profile (admin-only)
 - `/previewreset` - clear per-chat extraction overrides (admin-only)
+
+## Summary throttling
+- Non-admin users: up to 1 summary per hour (global per Telegram user id).
+- Admin users (`TELEGRAM_USER_ID` / `TELEGRAM_USER_IDS`): unlimited summaries.
 
 ## Requirements
 - Node.js 22+
@@ -56,8 +63,8 @@ pnpm dev
 - `XAI_API_KEY` (optional)
 - `DEFAULT_PROVIDER` (optional: `openrouter`, `openai`, `anthropic`, `xai`)
 - `DEFAULT_MODEL` (optional)
-- `TELEGRAM_USER_ID` (optional single admin user id for preview controls)
-- `TELEGRAM_USER_IDS` (optional JSON array like `[123,456]` or comma-separated `123,456`)
+- `TELEGRAM_USER_ID` (optional single admin user id for preview controls and summary throttle exemption)
+- `TELEGRAM_USER_IDS` (optional JSON array like `[123,456]` or comma-separated `123,456`; same admin uses)
 - `MAX_TELEGRAM_MESSAGE_LENGTH` (optional, default `4000`)
 - `APIFY_API_TOKEN` (optional, enables YouTube transcript fallback via Apify)
 - `YT_DLP_PATH` (optional, enables yt-dlp transcript workflows)

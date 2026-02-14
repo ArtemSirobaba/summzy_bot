@@ -8,6 +8,7 @@ import {
   handlePreviewPreset,
   handlePreviewReset,
   handlePreviewSet,
+  handleSummzy,
   handleStart,
 } from "./commands";
 import { handleMessage } from "../handlers/message";
@@ -17,6 +18,7 @@ export function createBot(): Bot {
 
   bot.command("start", handleStart);
   bot.command("help", handleHelp);
+  bot.command("summzy", handleSummzy);
   bot.command("newchat", handleNewChat);
   bot.command("features", handleFeatures);
   bot.command("preview", handlePreview);

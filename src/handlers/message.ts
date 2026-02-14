@@ -1,18 +1,15 @@
 import type { Context } from "grammy";
 import { env } from "../config/env";
-import { answerAboutDocument, summarizeDocument } from "../services/ai";
-import {
-  fetchDocumentContent,
-  getEffectiveLinkPreviewFetchOptions,
-} from "../services/document";
+import { answerAboutDocument } from "../services/ai";
 import {
   addAssistantTurn,
   addUserTurn,
   getSession,
-  replaceSession,
 } from "../services/session-store";
+import { summarizeFromUrl } from "./summarize";
 import { sanitizeAssistantOutput } from "../utils/assistant-output";
 import { chunkText } from "../utils/chunk";
+import { isGroupChatType } from "../utils/chat-mode";
 import { replyMarkdownV2WithFallback } from "../utils/telegram-format";
 import { extractFirstUrl } from "../utils/url";
 
@@ -41,34 +38,19 @@ export async function handleMessage(ctx: Context): Promise<void> {
     return;
   }
 
+  if (text.startsWith("/")) {
+    return;
+  }
+
   const url = extractFirstUrl(text);
 
   if (url) {
-    await ctx.api.sendChatAction(chatId, "typing");
-
-    try {
-      const document = await fetchDocumentContent(
-        url,
-        getEffectiveLinkPreviewFetchOptions(chatId)
-      );
-      const summary = sanitizeAssistantOutput(
-        await summarizeDocument(document.content, document.url)
-      );
-
-      replaceSession(chatId, document.url, document.content, summary);
-
-      if (summary) {
-        await replyInChunks(ctx, summary);
-      } else {
-        await ctx.reply(
-          "I could not generate a usable summary for that link. Please try another URL."
-        );
-      }
-    } catch (error) {
-      logHandlerError("summarize", error);
-      await ctx.reply("Failed to summarize that URL. Please try again in a moment.");
+    if (isGroupChatType(ctx.chat?.type)) {
+      await ctx.reply("In groups, use /summzy <url> to request a summary.");
+      return;
     }
 
+    await summarizeFromUrl(ctx, url);
     return;
   }
 

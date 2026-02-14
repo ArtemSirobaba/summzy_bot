@@ -1,6 +1,11 @@
 import type { CommandContext, Context } from "grammy";
 import { env } from "../config/env";
+import { summarizeFromUrl } from "../handlers/summarize";
 import { clearSession, hasSession } from "../services/session-store";
+import {
+  buildSummzyUsageMessage,
+  extractSummzyUrl,
+} from "../utils/summzy-command";
 import { replyMarkdownV2WithFallback } from "../utils/telegram-format";
 import {
   applyChatLinkPreviewPreset,
@@ -80,11 +85,14 @@ function buildStartMessage(ctx: CommandContext<Context>): string {
   return [
     "**Welcome to Summzy!**",
     "",
-    "Send a URL and I will summarize it. Then ask follow-up questions in the same chat.",
+    "Private chats: send a URL and I will summarize it.",
+    "Group chats: use /summzy <url> to summarize links.",
+    "Then ask follow-up questions in the same chat.",
     "",
     "**Commands**",
     "- /start - Show welcome message",
     "- /help - Show command guide",
+    "- /summzy <url> - Summarize a URL (required in groups)",
     "- /newchat - Start a new chat context",
     previewSection,
   ].join("\n");
@@ -117,10 +125,15 @@ function buildHelpMessage(ctx: CommandContext<Context>): string {
 
   return [
     "**How To Use**",
-    "1. Send a URL",
-    "2. Read the summary",
-    "3. Ask questions about that document",
-    "4. Use /newchat to start a fresh context",
+    "1. Private chat: send a URL or use /summzy <url>",
+    "2. Group chat: use /summzy <url>",
+    "3. Read the summary",
+    "4. Ask questions about that document",
+    "5. Use /newchat to start a fresh context",
+    "",
+    "**Rate limits**",
+    "- Non-admin users: 1 summary per hour",
+    "- Admin users (TELEGRAM_USER_ID/TELEGRAM_USER_IDS): unlimited",
     previewSection,
   ].join("\n");
 }
@@ -168,6 +181,18 @@ export async function handleStart(ctx: CommandContext<Context>) {
 
 export async function handleHelp(ctx: CommandContext<Context>) {
   await replyMarkdownV2WithFallback(ctx, buildHelpMessage(ctx));
+}
+
+export async function handleSummzy(ctx: CommandContext<Context>) {
+  const args = getCommandArgs(ctx).join(" ");
+  const url = extractSummzyUrl(args);
+
+  if (!url) {
+    await ctx.reply(buildSummzyUsageMessage());
+    return;
+  }
+
+  await summarizeFromUrl(ctx, url);
 }
 
 export async function handleNewChat(ctx: CommandContext<Context>) {
