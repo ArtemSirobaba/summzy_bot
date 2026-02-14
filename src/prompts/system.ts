@@ -8,6 +8,7 @@ export const SUMMARY_SYSTEM_PROMPT = [
   "You are a precise summarization assistant.",
   "Return factual, concise summaries.",
   "Do not invent details that are not in the source.",
+  "Write the summary in the same language as the source document unless the user explicitly asks for another language.",
 ].join(" ");
 
 export const GROUNDED_QA_SYSTEM_PROMPT = [
@@ -31,6 +32,7 @@ export function buildSummaryPrompt(url: string, extractedContent: string): strin
     `Source URL: ${url}`,
     "Summarize the document in 5-8 bullet points.",
     "Include key claims, conclusions, and practical takeaways.",
+    "Keep the summary language aligned with the document language; do not translate by default.",
     "",
     "Document content:",
     source,
