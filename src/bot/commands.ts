@@ -1,5 +1,7 @@
 import type { CommandContext, Context } from "grammy";
+import { env } from "../config/env";
 import { clearSession, hasSession } from "../services/session-store";
+import { replyMarkdownV2WithFallback } from "../utils/telegram-format";
 import {
   applyChatLinkPreviewPreset,
   formatLinkPreviewOptions,
@@ -14,34 +16,131 @@ import {
   setChatLinkPreviewOption,
 } from "../services/document";
 
-const START_MESSAGE = [
-  "Welcome to Summzy.",
-  "",
-  "Send me any URL. I will summarize it, then you can ask follow-up questions about that document.",
-  "",
-  "Commands:",
-  "/help - Show usage",
-  "/newchat - Clear current document chat",
-  "/features - Show enabled extractor features from env",
-  "/preview - Show active link extraction options",
-  "/previewset <key> <value> - Override one extraction option for this chat",
-  "/previewpreset <fast|balanced|deep|media> - Apply preset extraction profile",
-  "/previewreset - Clear extraction overrides for this chat",
-].join("\n");
+function isPreviewConfigured(): boolean {
+  return env.TELEGRAM_ADMIN_USER_IDS.length > 0;
+}
 
-const HELP_MESSAGE = [
-  "How to use:",
-  "1. Send a URL",
-  "2. Read the summary",
-  "3. Ask questions about the same document",
-  "",
-  "Link preview controls:",
-  "/features - Env-driven capabilities (Firecrawl/Apify/yt-dlp/transcription)",
-  "/preview - Current effective fetch options",
-  "/previewset - Per-chat option override",
-  "/previewpreset - Apply extraction preset",
-  "/previewreset - Return to env defaults",
-].join("\n");
+function isPreviewAdmin(ctx: CommandContext<Context>): boolean {
+  const userId = ctx.from?.id;
+  if (!userId) {
+    return false;
+  }
+  return env.TELEGRAM_ADMIN_USER_IDS.includes(userId);
+}
+
+function getPreviewAccessState(ctx: CommandContext<Context>):
+  | "admin"
+  | "not-admin"
+  | "disabled" {
+  if (!isPreviewConfigured()) {
+    return "disabled";
+  }
+  return isPreviewAdmin(ctx) ? "admin" : "not-admin";
+}
+
+function buildPreviewAccessMessage(): string {
+  return [
+    "**Link preview controls are unavailable.**",
+    "Set TELEGRAM_USER_ID or TELEGRAM_USER_IDS in env to enable admin access.",
+  ].join("\n");
+}
+
+function buildPreviewAdminOnlyMessage(): string {
+  return [
+    "**Admin only command.**",
+    "Preview controls are limited to users from TELEGRAM_USER_ID/TELEGRAM_USER_IDS.",
+  ].join("\n");
+}
+
+function buildStartMessage(ctx: CommandContext<Context>): string {
+  const access = getPreviewAccessState(ctx);
+  const previewSection =
+    access === "admin"
+      ? [
+          "",
+          "**Admin Link Preview Controls**",
+          "- /features - Show extractor capabilities",
+          "- /preview - Show active extraction options",
+          "- /previewset <key> <value> - Override one option",
+          "- /previewpreset <fast|balanced|deep|media> - Apply preset",
+          "- /previewreset - Clear extraction overrides",
+        ].join("\n")
+      : access === "not-admin"
+        ? [
+            "",
+            "**Admin Link Preview Controls**",
+            "- Available only to configured admin users",
+          ].join("\n")
+        : [
+            "",
+            "**Admin Link Preview Controls**",
+            "- Disabled until TELEGRAM_USER_ID or TELEGRAM_USER_IDS is configured",
+          ].join("\n");
+
+  return [
+    "**Welcome to Summzy!**",
+    "",
+    "Send a URL and I will summarize it. Then ask follow-up questions in the same chat.",
+    "",
+    "**Commands**",
+    "- /start - Show welcome message",
+    "- /help - Show command guide",
+    "- /newchat - Start a new chat context",
+    previewSection,
+  ].join("\n");
+}
+
+function buildHelpMessage(ctx: CommandContext<Context>): string {
+  const access = getPreviewAccessState(ctx);
+  const previewSection =
+    access === "admin"
+      ? [
+          "",
+          "**Admin Link Preview Controls**",
+          "- /features - Env capabilities (Firecrawl/Apify/yt-dlp/transcription)",
+          "- /preview - Current effective options",
+          "- /previewset <key> <value> - Per-chat override",
+          "- /previewpreset <fast|balanced|deep|media> - Apply profile",
+          "- /previewreset - Return to env defaults",
+        ].join("\n")
+      : access === "not-admin"
+        ? [
+            "",
+            "**Admin Link Preview Controls**",
+            "- Hidden for non-admin users",
+          ].join("\n")
+        : [
+            "",
+            "**Admin Link Preview Controls**",
+            "- Not available for anyone until admin IDs are configured",
+          ].join("\n");
+
+  return [
+    "**How To Use**",
+    "1. Send a URL",
+    "2. Read the summary",
+    "3. Ask questions about that document",
+    "4. Use /newchat to start a fresh context",
+    previewSection,
+  ].join("\n");
+}
+
+async function canUsePreviewControls(
+  ctx: CommandContext<Context>
+): Promise<boolean> {
+  const access = getPreviewAccessState(ctx);
+  if (access === "admin") {
+    return true;
+  }
+
+  await replyMarkdownV2WithFallback(
+    ctx,
+    access === "disabled"
+      ? buildPreviewAccessMessage()
+      : buildPreviewAdminOnlyMessage()
+  );
+  return false;
+}
 
 function getCommandArgs(ctx: CommandContext<Context>): string[] {
   const text = ctx.message?.text ?? "";
@@ -64,11 +163,11 @@ function buildPreviewSetUsageMessage(): string {
 }
 
 export async function handleStart(ctx: CommandContext<Context>) {
-  await ctx.reply(START_MESSAGE);
+  await replyMarkdownV2WithFallback(ctx, buildStartMessage(ctx));
 }
 
 export async function handleHelp(ctx: CommandContext<Context>) {
-  await ctx.reply(HELP_MESSAGE);
+  await replyMarkdownV2WithFallback(ctx, buildHelpMessage(ctx));
 }
 
 export async function handleNewChat(ctx: CommandContext<Context>) {
@@ -89,6 +188,10 @@ export async function handleNewChat(ctx: CommandContext<Context>) {
 }
 
 export async function handleFeatures(ctx: CommandContext<Context>) {
+  if (!(await canUsePreviewControls(ctx))) {
+    return;
+  }
+
   const capabilities = getLinkPreviewCapabilities();
   const defaultOptions = getDefaultLinkPreviewFetchOptions();
   const transcriptionProviders = [
@@ -97,9 +200,10 @@ export async function handleFeatures(ctx: CommandContext<Context>) {
     capabilities.transcriptionWithFal ? "fal" : null,
   ].filter(Boolean);
 
-  await ctx.reply(
+  await replyMarkdownV2WithFallback(
+    ctx,
     [
-      "Link preview capabilities (from environment):",
+      "**Link Preview Capabilities**",
       `- firecrawl: ${capabilities.firecrawl ? "enabled" : "disabled"}`,
       `- apify: ${capabilities.apify ? "enabled" : "disabled"}`,
       `- yt-dlp: ${capabilities.ytDlp ? "enabled" : "disabled"}`,
@@ -110,13 +214,17 @@ export async function handleFeatures(ctx: CommandContext<Context>) {
       }`,
       `- progress logs: ${capabilities.progressLogs ? "enabled" : "disabled"}`,
       "",
-      "Default extraction options:",
+      "**Default Extraction Options**",
       ...formatLinkPreviewOptions(defaultOptions),
     ].join("\n")
   );
 }
 
 export async function handlePreview(ctx: CommandContext<Context>) {
+  if (!(await canUsePreviewControls(ctx))) {
+    return;
+  }
+
   const chatId = ctx.chat?.id;
   if (!chatId) {
     return;
@@ -126,9 +234,10 @@ export async function handlePreview(ctx: CommandContext<Context>) {
   const overrides = getChatLinkPreviewOverrides(chatId);
   const overrideKeys = Object.keys(overrides);
 
-  await ctx.reply(
+  await replyMarkdownV2WithFallback(
+    ctx,
     [
-      "Active extraction options for this chat:",
+      "**Active Extraction Options (This Chat)**",
       ...formatLinkPreviewOptions(effectiveOptions),
       "",
       overrideKeys.length > 0
@@ -140,6 +249,10 @@ export async function handlePreview(ctx: CommandContext<Context>) {
 }
 
 export async function handlePreviewSet(ctx: CommandContext<Context>) {
+  if (!(await canUsePreviewControls(ctx))) {
+    return;
+  }
+
   const chatId = ctx.chat?.id;
   if (!chatId) {
     return;
@@ -147,7 +260,7 @@ export async function handlePreviewSet(ctx: CommandContext<Context>) {
 
   const args = getCommandArgs(ctx);
   if (args.length < 2) {
-    await ctx.reply(buildPreviewSetUsageMessage());
+    await replyMarkdownV2WithFallback(ctx, buildPreviewSetUsageMessage());
     return;
   }
 
@@ -155,7 +268,8 @@ export async function handlePreviewSet(ctx: CommandContext<Context>) {
   const rawValue = valueParts.join(" ");
   const result = setChatLinkPreviewOption(chatId, optionKey, rawValue);
 
-  await ctx.reply(
+  await replyMarkdownV2WithFallback(
+    ctx,
     [
       result.message,
       "",
@@ -166,6 +280,10 @@ export async function handlePreviewSet(ctx: CommandContext<Context>) {
 }
 
 export async function handlePreviewPreset(ctx: CommandContext<Context>) {
+  if (!(await canUsePreviewControls(ctx))) {
+    return;
+  }
+
   const chatId = ctx.chat?.id;
   if (!chatId) {
     return;
@@ -174,7 +292,8 @@ export async function handlePreviewPreset(ctx: CommandContext<Context>) {
   const args = getCommandArgs(ctx);
   const rawPreset = args[0];
   if (!rawPreset) {
-    await ctx.reply(
+    await replyMarkdownV2WithFallback(
+      ctx,
       `Usage: /previewpreset <${getLinkPreviewPresetValues().join("|")}>`
     );
     return;
@@ -182,14 +301,16 @@ export async function handlePreviewPreset(ctx: CommandContext<Context>) {
 
   const preset = parseLinkPreviewPreset(rawPreset);
   if (!preset) {
-    await ctx.reply(
+    await replyMarkdownV2WithFallback(
+      ctx,
       `Unknown preset "${rawPreset}". Allowed presets: ${getLinkPreviewPresetValues().join(", ")}`
     );
     return;
   }
 
   const options = applyChatLinkPreviewPreset(chatId, preset);
-  await ctx.reply(
+  await replyMarkdownV2WithFallback(
+    ctx,
     [
       `Applied preset "${preset}" for this chat.`,
       "",
@@ -200,6 +321,10 @@ export async function handlePreviewPreset(ctx: CommandContext<Context>) {
 }
 
 export async function handlePreviewReset(ctx: CommandContext<Context>) {
+  if (!(await canUsePreviewControls(ctx))) {
+    return;
+  }
+
   const chatId = ctx.chat?.id;
   if (!chatId) {
     return;
@@ -208,7 +333,8 @@ export async function handlePreviewReset(ctx: CommandContext<Context>) {
   resetChatLinkPreviewOptions(chatId);
   const options = getEffectiveLinkPreviewFetchOptions(chatId);
 
-  await ctx.reply(
+  await replyMarkdownV2WithFallback(
+    ctx,
     [
       "Cleared extraction overrides for this chat.",
       "",

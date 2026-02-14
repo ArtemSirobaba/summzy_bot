@@ -48,3 +48,44 @@ test("env parses boolean link preview flags", () => {
   assert.equal(parsed.LINK_PREVIEW_TRANSCRIPT_TIMESTAMPS, true);
   assert.equal(parsed.LINK_PREVIEW_DEBUG_PROGRESS, true);
 });
+
+test("env parses TELEGRAM_USER_ID as admin user id", () => {
+  const parsed = parseEnv({
+    BOT_TOKEN: "123:test",
+    OPENAI_API_KEY: "sk-test",
+    TELEGRAM_USER_ID: "123456789",
+  } as NodeJS.ProcessEnv);
+
+  assert.deepEqual(parsed.TELEGRAM_ADMIN_USER_IDS, [123456789]);
+});
+
+test("env parses TELEGRAM_USER_IDS json array and deduplicates", () => {
+  const parsed = parseEnv({
+    BOT_TOKEN: "123:test",
+    OPENAI_API_KEY: "sk-test",
+    TELEGRAM_USER_ID: "123456789",
+    TELEGRAM_USER_IDS: "[123456789,987654321]",
+  } as NodeJS.ProcessEnv);
+
+  assert.deepEqual(parsed.TELEGRAM_ADMIN_USER_IDS, [123456789, 987654321]);
+});
+
+test("env parses TELEGRAM_USER_IDS comma separated list", () => {
+  const parsed = parseEnv({
+    BOT_TOKEN: "123:test",
+    OPENAI_API_KEY: "sk-test",
+    TELEGRAM_USER_IDS: "101, 202",
+  } as NodeJS.ProcessEnv);
+
+  assert.deepEqual(parsed.TELEGRAM_ADMIN_USER_IDS, [101, 202]);
+});
+
+test("env rejects invalid TELEGRAM_USER_IDS", () => {
+  assert.throws(() =>
+    parseEnv({
+      BOT_TOKEN: "123:test",
+      OPENAI_API_KEY: "sk-test",
+      TELEGRAM_USER_IDS: "[123,\"abc\"]",
+    } as NodeJS.ProcessEnv)
+  );
+});

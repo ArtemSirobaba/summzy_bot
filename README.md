@@ -6,7 +6,7 @@ Telegram bot for:
 - summarizing a URL
 - chatting about the summarized document
 - resetting context with `/newchat`
-- tuning extraction behavior per chat (`/preview*` commands)
+- tuning extraction behavior per chat (`/preview*` commands, admin-only)
 
 ## Core flow
 1. Send a URL.
@@ -20,11 +20,11 @@ When you send a new URL, current document context is replaced automatically.
 - `/start`
 - `/help`
 - `/newchat`
-- `/features` - show env-driven extractor capabilities
-- `/preview` - show active extraction options for current chat
-- `/previewset <key> <value>` - override one extraction option
-- `/previewpreset <fast|balanced|deep|media>` - apply a preset profile
-- `/previewreset` - clear per-chat extraction overrides
+- `/features` - show env-driven extractor capabilities (admin-only)
+- `/preview` - show active extraction options for current chat (admin-only)
+- `/previewset <key> <value>` - override one extraction option (admin-only)
+- `/previewpreset <fast|balanced|deep|media>` - apply a preset profile (admin-only)
+- `/previewreset` - clear per-chat extraction overrides (admin-only)
 
 ## Requirements
 - Node.js 22+
@@ -56,6 +56,8 @@ pnpm dev
 - `XAI_API_KEY` (optional)
 - `DEFAULT_PROVIDER` (optional: `openrouter`, `openai`, `anthropic`, `xai`)
 - `DEFAULT_MODEL` (optional)
+- `TELEGRAM_USER_ID` (optional single admin user id for preview controls)
+- `TELEGRAM_USER_IDS` (optional JSON array like `[123,456]` or comma-separated `123,456`)
 - `MAX_TELEGRAM_MESSAGE_LENGTH` (optional, default `4000`)
 - `APIFY_API_TOKEN` (optional, enables YouTube transcript fallback via Apify)
 - `YT_DLP_PATH` (optional, enables yt-dlp transcript workflows)
