@@ -1,7 +1,7 @@
 {
-	"name": "summarize-tg-bot",
+	"name": "summzy",
 	"version": "1.0.0",
-	"description": "Telegram bot that uses @steipete/summarize to generate AI-powered summaries",
+	"description": "AI-powered summaries and chat about the summarized document",
 	"main": "dist/index.js",
 	"type": "module",
 	"scripts": {

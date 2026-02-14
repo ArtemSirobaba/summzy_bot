@@ -1,9 +1,12 @@
 # Summarize Telegram Bot
 
+![Summzy Logo](public/summzy.png)
+
 Telegram bot for:
 - summarizing a URL
 - chatting about the summarized document
 - resetting context with `/newchat`
+- tuning extraction behavior per chat (`/preview*` commands)
 
 ## Core flow
 1. Send a URL.
@@ -17,6 +20,11 @@ When you send a new URL, current document context is replaced automatically.
 - `/start`
 - `/help`
 - `/newchat`
+- `/features` - show env-driven extractor capabilities
+- `/preview` - show active extraction options for current chat
+- `/previewset <key> <value>` - override one extraction option
+- `/previewpreset <fast|balanced|deep|media>` - apply a preset profile
+- `/previewreset` - clear per-chat extraction overrides
 
 ## Requirements
 - Node.js 22+
@@ -49,6 +57,21 @@ pnpm dev
 - `DEFAULT_PROVIDER` (optional: `openrouter`, `openai`, `anthropic`, `xai`)
 - `DEFAULT_MODEL` (optional)
 - `MAX_TELEGRAM_MESSAGE_LENGTH` (optional, default `4000`)
+- `APIFY_API_TOKEN` (optional, enables YouTube transcript fallback via Apify)
+- `YT_DLP_PATH` (optional, enables yt-dlp transcript workflows)
+- `FIRECRAWL_API_KEY` (optional, enables Firecrawl scraping)
+- `GROQ_API_KEY` (optional, enables Groq transcription backend)
+- `FAL_KEY` or `FAL_API_KEY` (optional, enables FAL transcription backend)
+- `LINK_PREVIEW_TIMEOUT_MS` (optional, default `120000`)
+- `LINK_PREVIEW_MAX_CHARACTERS` (optional, default `8000`)
+- `LINK_PREVIEW_CACHE_MODE` (optional: `default`, `bypass`)
+- `LINK_PREVIEW_YOUTUBE_TRANSCRIPT_MODE` (optional: `auto`, `web`, `apify`, `yt-dlp`, `no-auto`)
+- `LINK_PREVIEW_MEDIA_TRANSCRIPT_MODE` (optional: `auto`, `prefer`)
+- `LINK_PREVIEW_TRANSCRIPT_TIMESTAMPS` (optional boolean, default `false`)
+- `LINK_PREVIEW_FIRECRAWL_MODE` (optional: `off`, `auto`, `always`)
+- `LINK_PREVIEW_FORMAT` (optional: `text`, `markdown`; default `markdown`)
+- `LINK_PREVIEW_MARKDOWN_MODE` (optional: `off`, `auto`, `llm`, `readability`)
+- `LINK_PREVIEW_DEBUG_PROGRESS` (optional boolean, logs extractor progress events)
 
 ## Model selection
 - Available providers are discovered from keys present in `.env`.

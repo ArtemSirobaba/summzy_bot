@@ -1,7 +1,10 @@
 import type { Context } from "grammy";
 import { env } from "../config/env";
 import { answerAboutDocument, summarizeDocument } from "../services/ai";
-import { fetchDocumentContent } from "../services/document";
+import {
+  fetchDocumentContent,
+  getEffectiveLinkPreviewFetchOptions,
+} from "../services/document";
 import {
   addAssistantTurn,
   addUserTurn,
@@ -43,7 +46,10 @@ export async function handleMessage(ctx: Context): Promise<void> {
     await ctx.api.sendChatAction(chatId, "typing");
 
     try {
-      const document = await fetchDocumentContent(url);
+      const document = await fetchDocumentContent(
+        url,
+        getEffectiveLinkPreviewFetchOptions(chatId)
+      );
       const summary = sanitizeAssistantOutput(
         await summarizeDocument(document.content, document.url)
       );
