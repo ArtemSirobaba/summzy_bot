@@ -1,12 +1,6 @@
 import type { CommandContext, Context } from "grammy";
 import { env } from "../config/env";
 import { summarizeFromUrl } from "../handlers/summarize";
-import { clearSession, hasSession } from "../services/session-store";
-import {
-  buildSummzyUsageMessage,
-  extractSummzyUrl,
-} from "../utils/summzy-command";
-import { replyMarkdownV2WithFallback } from "../utils/telegram-format";
 import {
   applyChatLinkPreviewPreset,
   formatLinkPreviewOptions,
@@ -20,6 +14,12 @@ import {
   resetChatLinkPreviewOptions,
   setChatLinkPreviewOption,
 } from "../services/document";
+import { clearSession, hasSession } from "../services/session-store";
+import {
+  buildSummzyUsageMessage,
+  extractSummzyUrl,
+} from "../utils/summzy-command";
+import { replyMarkdownV2WithFallback } from "../utils/telegram-format";
 
 function isPreviewConfigured(): boolean {
   return env.TELEGRAM_ADMIN_USER_IDS.length > 0;
@@ -33,10 +33,9 @@ function isPreviewAdmin(ctx: CommandContext<Context>): boolean {
   return env.TELEGRAM_ADMIN_USER_IDS.includes(userId);
 }
 
-function getPreviewAccessState(ctx: CommandContext<Context>):
-  | "admin"
-  | "not-admin"
-  | "disabled" {
+function getPreviewAccessState(
+  ctx: CommandContext<Context>
+): "admin" | "not-admin" | "disabled" {
   if (!isPreviewConfigured()) {
     return "disabled";
   }
@@ -71,16 +70,16 @@ function buildStartMessage(ctx: CommandContext<Context>): string {
           "- /previewreset - Clear extraction overrides",
         ].join("\n")
       : access === "not-admin"
-        ? [
-            "",
-            "**Admin Link Preview Controls**",
-            "- Available only to configured admin users",
-          ].join("\n")
-        : [
-            "",
-            "**Admin Link Preview Controls**",
-            "- Disabled until TELEGRAM_USER_ID or TELEGRAM_USER_IDS is configured",
-          ].join("\n");
+      ? [
+          "",
+          "**Admin Link Preview Controls**",
+          "- Available only to configured admin users",
+        ].join("\n")
+      : [
+          "",
+          "**Admin Link Preview Controls**",
+          "- Disabled until TELEGRAM_USER_ID or TELEGRAM_USER_IDS is configured",
+        ].join("\n");
 
   return [
     "**Welcome to Summzy!**",
@@ -110,18 +109,22 @@ function buildHelpMessage(ctx: CommandContext<Context>): string {
           "- /previewset <key> <value> - Per-chat override",
           "- /previewpreset <fast|balanced|deep|media> - Apply profile",
           "- /previewreset - Return to env defaults",
+          "",
+          "**Rate limits**",
+          "- Non-admin users: 1 summary per hour",
+          "- Admin users (TELEGRAM_USER_ID/TELEGRAM_USER_IDS): unlimited",
         ].join("\n")
       : access === "not-admin"
-        ? [
-            "",
-            "**Admin Link Preview Controls**",
-            "- Hidden for non-admin users",
-          ].join("\n")
-        : [
-            "",
-            "**Admin Link Preview Controls**",
-            "- Not available for anyone until admin IDs are configured",
-          ].join("\n");
+      ? [
+          "",
+          "**Admin Link Preview Controls**",
+          "- Hidden for non-admin users",
+        ].join("\n")
+      : [
+          "",
+          "**Admin Link Preview Controls**",
+          "- Not available for anyone until admin IDs are configured",
+        ].join("\n");
 
   return [
     "**How To Use**",
@@ -131,9 +134,6 @@ function buildHelpMessage(ctx: CommandContext<Context>): string {
     "4. Ask questions about that document",
     "5. Use /newchat to start a fresh context",
     "",
-    "**Rate limits**",
-    "- Non-admin users: 1 summary per hour",
-    "- Admin users (TELEGRAM_USER_ID/TELEGRAM_USER_IDS): unlimited",
     previewSection,
   ].join("\n");
 }
@@ -328,7 +328,9 @@ export async function handlePreviewPreset(ctx: CommandContext<Context>) {
   if (!preset) {
     await replyMarkdownV2WithFallback(
       ctx,
-      `Unknown preset "${rawPreset}". Allowed presets: ${getLinkPreviewPresetValues().join(", ")}`
+      `Unknown preset "${rawPreset}". Allowed presets: ${getLinkPreviewPresetValues().join(
+        ", "
+      )}`
     );
     return;
   }
