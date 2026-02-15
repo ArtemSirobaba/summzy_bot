@@ -24,7 +24,7 @@ Telegram bot for:
 
 ## Requirements
 - Node.js 22+
-- `pnpm`
+- `bun`
 - Telegram bot token
 - At least one model provider API key:
   - `OPENROUTER_API_KEY`
@@ -35,14 +35,14 @@ Telegram bot for:
 
 ## Setup
 ```bash
-pnpm install
+bun install
 cp .env.example .env
 ```
 
 Fill `.env` with required values, then run:
 
 ```bash
-pnpm dev
+bun run dev
 ```
 
 ## Environment variables
@@ -103,6 +103,6 @@ src/
 ```
 
 ## Scripts
-- `pnpm dev` - run bot in development
-- `pnpm build` - compile TypeScript
-- `pnpm typecheck` - run TypeScript checks
+- `bun run dev` - run bot in development
+- `bun run build` - compile TypeScript
+- `bun run typecheck` - run TypeScript checks

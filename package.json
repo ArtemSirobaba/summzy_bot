@@ -4,6 +4,7 @@
 	"description": "AI-powered summaries and chat about the summarized document",
 	"main": "dist/index.mjs",
 	"type": "module",
+	"packageManager": "bun@1.2.22",
 	"scripts": {
 		"start": "node dist/index.mjs",
 		"dev": "tsx src/index.ts",
