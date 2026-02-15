@@ -1,242 +1,351 @@
 import type { Context } from "grammy";
+
 /**
- * Telegram MarkdownV2 Formatter - Final Version
- * Converts Markdown to Telegram MarkdownV2 format
+ * Telegram MarkdownV2 Formatter
  *
- * Reference: https://core.telegram.org/api/entities
+ * Pipeline:
+ * 1. Extract code blocks/inline code → placeholders
+ * 2. Normalize markdown (headers, HR, bold, italic, strikethrough, links, blockquotes)
+ * 3. Validate marker pairing per-line; escape unpaired markers
+ * 4. Escape remaining special chars outside formatting regions
+ * 5. Restore code blocks
  */
 
-export class TelegramMarkdownV2Formatter {
-  // Characters that must be escaped outside code/links
-  private static readonly ESCAPE_CHARS = [
-    "_",
-    "*",
-    "[",
-    "]",
-    "(",
-    ")",
-    "~",
-    "`",
-    ">",
-    "#",
-    "+",
-    "-",
-    "=",
-    "|",
-    "{",
-    "}",
-    ".",
-    "!",
-  ];
+// Characters that must be escaped in Telegram MarkdownV2 (outside formatting)
+const SPECIAL_CHARS = /[_*[\]()~`>#+\-=|{}.!\\]/g;
 
-  /**
-   * Main formatting function
-   */
-  static format(markdown: string): string {
-    if (!markdown) return "";
+function escapeChar(ch: string): string {
+  return `\\${ch}`;
+}
 
-    // Step 1: Extract and protect code blocks and inline code
-    const { text: textWithoutCode, codeBlocks } =
-      this.extractCodeBlocks(markdown);
+function escapeText(text: string): string {
+  return text.replace(SPECIAL_CHARS, escapeChar);
+}
 
-    // Step 2: Convert markdown formatting to Telegram format
-    const formatted = this.convertMarkdownToTelegramFormat(textWithoutCode);
+// Inside link URLs, only ) and \ need escaping per Telegram spec
+function escapeUrl(url: string): string {
+  return url.replace(/[)\\]/g, escapeChar);
+}
 
-    // Step 3: Escape special characters
-    const escaped = this.escapeSpecialCharacters(formatted);
+// ─── Code extraction ───────────────────────────────────────────────
 
-    // Step 4: Restore code blocks
-    const final = this.restoreCodeBlocks(escaped, codeBlocks);
+interface CodeStore {
+  blocks: Map<string, string>;
+  counter: number;
+}
 
-    return final;
+function extractCode(text: string): { text: string; store: CodeStore } {
+  const store: CodeStore = { blocks: new Map(), counter: 0 };
+  let result = text;
+
+  // Fenced code blocks: ```lang\ncode```
+  result = result.replace(/```(\w*)\n?([\s\S]*?)```/g, (_m, lang, code) => {
+    const ph = `\x00CB${store.counter++}\x00`;
+    const formatted = lang
+      ? `\`\`\`${lang}\n${code.trimEnd()}\n\`\`\``
+      : `\`\`\`\n${code.trimEnd()}\n\`\`\``;
+    store.blocks.set(ph, formatted);
+    return ph;
+  });
+
+  // Inline code: `code`
+  result = result.replace(/`([^`\n]+?)`/g, (_m, code) => {
+    const ph = `\x00IC${store.counter++}\x00`;
+    store.blocks.set(ph, `\`${code}\``);
+    return ph;
+  });
+
+  return { text: result, store };
+}
+
+function restoreCode(text: string, store: CodeStore): string {
+  let result = text;
+  for (const [ph, code] of store.blocks) {
+    result = result.replace(ph, code);
   }
+  return result;
+}
 
-  /**
-   * Extract code blocks and inline code
-   */
-  private static extractCodeBlocks(text: string): {
-    text: string;
-    codeBlocks: Map<string, string>;
-  } {
-    const codeBlocks = new Map<string, string>();
-    let counter = 0;
-    let result = text;
+// ─── Markdown normalization ────────────────────────────────────────
 
-    // Extract fenced code blocks
-    result = result.replace(
-      /```([\w]*)\n?([\s\S]*?)```/g,
-      (match, lang, code) => {
-        const placeholder = `\x00CODEBLOCK${counter}\x00`;
-        const formattedCode = lang
-          ? `\`\`\`${lang}\n${code.trim()}\`\`\``
-          : `\`\`\`\n${code.trim()}\`\`\``;
-        codeBlocks.set(placeholder, formattedCode);
-        counter++;
-        return placeholder;
-      }
-    );
+/**
+ * Convert standard markdown to Telegram MarkdownV2 formatting markers.
+ * Uses sentinel tokens to avoid double-processing.
+ */
+function normalizeMarkdown(text: string): {
+  text: string;
+  escaped: string[];
+} {
+  let result = text;
 
-    // Extract inline code
-    result = result.replace(/`([^`\n]+?)`/g, (match, code) => {
-      const placeholder = `\x00CODE${counter}\x00`;
-      codeBlocks.set(placeholder, `\`${code}\``);
-      counter++;
-      return placeholder;
-    });
+  // Pre-process: unescape already-escaped markdown chars (e.g. \* \_ \~)
+  // Replace with numbered placeholders to avoid interfering with markdown regexes.
+  const escaped: string[] = [];
+  result = result.replace(/\\([_*~`\\[\]()>#+=|{}.!\-])/g, (_m, ch) => {
+    const idx = escaped.length;
+    escaped.push(ch);
+    return `\x02${idx}\x02`;
+  });
 
-    return { text: result, codeBlocks };
-  }
+  // Headers → bold
+  result = result.replace(/^#{1,6}\s+(.+?)$/gm, "\x01BOLD$1\x01/BOLD");
 
-  /**
-   * Convert markdown formatting to Telegram MarkdownV2
-   */
-  private static convertMarkdownToTelegramFormat(text: string): string {
-    let result = text;
+  // Horizontal rules: ---, ***, ___ (3+ chars)
+  result = result.replace(/^[-*_]{3,}$/gm, "\x01HR");
 
-    // Headers: # -> bold
-    result = result.replace(/^#{1,6}\s+(.+?)$/gm, "*$1*");
+  // Images: ![alt](url) or ![alt](url "title") → just the alt text
+  result = result.replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1");
 
-    // Process bold and italic carefully to avoid conflicts
-    // Strategy: Use unique placeholders that won't conflict
+  // Links: [text](url) or [text](url "title") — strip optional title
+  // URL pattern handles one level of balanced parentheses (e.g. wikipedia URLs)
+  result = result.replace(
+    /\[([^\]]+)\]\(((?:[^\s()]*(?:\([^\s()]*\))[^\s()]*|[^\s)"])+)(?:\s+"[^"]*")?\)/g,
+    "\x01LINK$1\x01LSEP$2\x01/LINK"
+  );
 
-    // Bold: **text** -> temporary marker
-    result = result.replace(/\*\*(.+?)\*\*/gs, "\x00BOLD\x00$1\x00/BOLD\x00");
+  // Bold+Italic: ***text*** or ___text___
+  result = result.replace(
+    /\*\*\*(.+?)\*\*\*/g,
+    "\x01BOLD\x01ITALIC$1\x01/ITALIC\x01/BOLD"
+  );
+  result = result.replace(
+    /___(.+?)___/g,
+    "\x01BOLD\x01ITALIC$1\x01/ITALIC\x01/BOLD"
+  );
 
-    // Bold: __text__ -> temporary marker
-    result = result.replace(
-      /(?<!_)__(?!_)(.+?)__(?!_)/gs,
-      "\x00BOLD\x00$1\x00/BOLD\x00"
-    );
+  // Bold+Italic mixed: **_text_** or __*text*__
+  result = result.replace(
+    /\*\*_(.+?)_\*\*/g,
+    "\x01BOLD\x01ITALIC$1\x01/ITALIC\x01/BOLD"
+  );
+  result = result.replace(
+    /__\*(.+?)\*__/g,
+    "\x01BOLD\x01ITALIC$1\x01/ITALIC\x01/BOLD"
+  );
 
-    // Italic: *text* -> temporary marker
-    result = result.replace(/\*(.+?)\*/gs, "\x00ITALIC\x00$1\x00/ITALIC\x00");
+  // Bold: **text** or __text__
+  result = result.replace(/\*\*(.+?)\*\*/g, "\x01BOLD$1\x01/BOLD");
+  result = result.replace(/(?<!_)__(?!_)(.+?)__(?!_)/g, "\x01BOLD$1\x01/BOLD");
 
-    // Italic: _text_ -> keep as underscore (already in Telegram format)
-    // Just need to make sure single _ becomes _text_
-    // This regex should match single underscores not part of __
-    result = result.replace(
-      /(?<!_)_(?!_)(.+?)_(?!_)/gs,
-      "\x00ITALIC\x00$1\x00/ITALIC\x00"
-    );
+  // Italic: *text* or _text_ (single, not double)
+  result = result.replace(
+    /(?<!\*)\*(?!\*)(.+?)\*(?!\*)/g,
+    "\x01ITALIC$1\x01/ITALIC"
+  );
+  result = result.replace(
+    /(?<!_)_(?!_)(.+?)_(?!_)/g,
+    "\x01ITALIC$1\x01/ITALIC"
+  );
 
-    // Convert markers to Telegram format
-    result = result.replace(/\x00BOLD\x00(.+?)\x00\/BOLD\x00/gs, "*$1*");
-    result = result.replace(/\x00ITALIC\x00(.+?)\x00\/ITALIC\x00/gs, "_$1_");
+  // Strikethrough: ~~text~~
+  result = result.replace(/~~(.+?)~~/g, "\x01STRIKE$1\x01/STRIKE");
 
-    // Strikethrough: ~~text~~ -> ~text~
-    result = result.replace(/~~(.+?)~~/gs, "~$1~");
+  // Spoiler: ||text|| (Telegram-specific, pass through)
+  result = result.replace(/\|\|(.+?)\|\|/g, "\x01SPOILER$1\x01/SPOILER");
 
-    // Underline: <u>text</u> -> __text__
-    result = result.replace(/<u>(.+?)<\/u>/gs, "__$1__");
+  // Blockquotes: > or >> (nested treated same — Telegram only has single-level)
+  result = result.replace(/^>+\s?(.*)$/gm, "\x01BQ$1");
 
-    // Blockquote: > text -> >text
-    result = result.replace(/^>\s*(.+)$/gm, ">$1");
+  // Ordered lists: 1. item → number with escaped dot
+  result = result.replace(/^(\d+)\.\s+/gm, (_m, num) => {
+    const idx = escaped.length;
+    escaped.push(".");
+    return `${num}\x02${idx}\x02 `;
+  });
 
-    return result;
-  }
+  // Unordered lists: - item or * item → • item
+  result = result.replace(/^[-*]\s+/gm, "• ");
 
-  /**
-   * Escape special characters in formatted text
-   */
-  private static escapeSpecialCharacters(text: string): string {
-    const parts: string[] = [];
-    let currentIndex = 0;
+  return { text: result, escaped };
+}
 
-    // Pattern to match all Telegram formatting
-    const pattern =
-      /__[^_]+?__|~[^~]+?~|\*[^*]+?\*|_[^_]+?_|\[[^\]]+?\]\([^)]+?\)|^>[^\n]+/gm;
+// ─── Sentinel resolution ───────────────────────────────────────────
 
-    const markers: Array<{ start: number; end: number; text: string }> = [];
+function resolveLine(line: string): string {
+  // Parse the line into segments: plain text and sentinel-wrapped regions
+  const segments: Array<
+    | { type: "text"; content: string }
+    | { type: "bold"; content: string }
+    | { type: "italic"; content: string }
+    | { type: "strike"; content: string }
+    | { type: "spoiler"; content: string }
+    | { type: "link"; text: string; url: string }
+    | { type: "blockquote"; content: string }
+    | { type: "hr" }
+  > = [];
 
-    let match;
-    while ((match = pattern.exec(text)) !== null) {
-      markers.push({
-        start: match.index,
-        end: match.index + match[0].length,
-        text: match[0],
+  let remaining = line;
+
+  while (remaining.length > 0) {
+    // Find the next sentinel
+    const nextSentinel = remaining.indexOf("\x01");
+
+    if (nextSentinel === -1) {
+      // No more sentinels — rest is plain text
+      segments.push({ type: "text", content: remaining });
+      break;
+    }
+
+    // Push any text before the sentinel
+    if (nextSentinel > 0) {
+      segments.push({
+        type: "text",
+        content: remaining.substring(0, nextSentinel),
       });
+      remaining = remaining.substring(nextSentinel);
     }
 
-    // Process text between markers
-    for (const marker of markers) {
-      // Escape plain text before marker
-      if (currentIndex < marker.start) {
-        parts.push(this.escapeText(text.substring(currentIndex, marker.start)));
-      }
-
-      // Handle different marker types
-      const markerText = marker.text;
-
-      if (markerText.startsWith("[")) {
-        // Link [text](url) - escape text, not URL
-        const linkMatch = markerText.match(/\[([^\]]+)\]\(([^)]+)\)/);
-        if (linkMatch) {
-          parts.push(`[${this.escapeText(linkMatch[1])}](${linkMatch[2]})`);
-        } else {
-          parts.push(markerText);
-        }
-      } else if (markerText.startsWith(">")) {
-        // Blockquote >text - escape content
-        parts.push(">" + this.escapeText(markerText.substring(1)));
-      } else if (markerText.startsWith("__") && markerText.endsWith("__")) {
-        // Underline __text__
-        const content = markerText.slice(2, -2);
-        parts.push("__" + this.escapeText(content) + "__");
-      } else if (markerText.startsWith("~") && markerText.endsWith("~")) {
-        // Strike ~text~
-        const content = markerText.slice(1, -1);
-        parts.push("~" + this.escapeText(content) + "~");
-      } else if (markerText.startsWith("*") && markerText.endsWith("*")) {
-        // Bold *text*
-        const content = markerText.slice(1, -1);
-        parts.push("*" + this.escapeText(content) + "*");
-      } else if (markerText.startsWith("_") && markerText.endsWith("_")) {
-        // Italic _text_
-        const content = markerText.slice(1, -1);
-        parts.push("_" + this.escapeText(content) + "_");
+    // Identify sentinel type
+    if (remaining.startsWith("\x01HR")) {
+      segments.push({ type: "hr" });
+      remaining = remaining.substring(3); // \x01HR
+    } else if (remaining.startsWith("\x01BQ")) {
+      const content = remaining.substring(3); // \x01BQ
+      segments.push({ type: "blockquote", content });
+      remaining = "";
+    } else if (remaining.startsWith("\x01BOLD")) {
+      const end = remaining.indexOf("\x01/BOLD");
+      if (end === -1) {
+        // Unclosed — treat as plain text
+        segments.push({ type: "text", content: remaining.substring(1) });
+        remaining = "";
       } else {
-        parts.push(markerText);
+        const content = remaining.substring(5, end); // after \x01BOLD
+        segments.push({ type: "bold", content });
+        remaining = remaining.substring(end + 6); // after \x01/BOLD
       }
-
-      currentIndex = marker.end;
+    } else if (remaining.startsWith("\x01ITALIC")) {
+      const end = remaining.indexOf("\x01/ITALIC");
+      if (end === -1) {
+        segments.push({ type: "text", content: remaining.substring(1) });
+        remaining = "";
+      } else {
+        const content = remaining.substring(7, end);
+        segments.push({ type: "italic", content });
+        remaining = remaining.substring(end + 8);
+      }
+    } else if (remaining.startsWith("\x01STRIKE")) {
+      const end = remaining.indexOf("\x01/STRIKE");
+      if (end === -1) {
+        segments.push({ type: "text", content: remaining.substring(1) });
+        remaining = "";
+      } else {
+        const content = remaining.substring(7, end);
+        segments.push({ type: "strike", content });
+        remaining = remaining.substring(end + 8);
+      }
+    } else if (remaining.startsWith("\x01SPOILER")) {
+      const end = remaining.indexOf("\x01/SPOILER");
+      if (end === -1) {
+        segments.push({ type: "text", content: remaining.substring(1) });
+        remaining = "";
+      } else {
+        const content = remaining.substring(8, end); // after \x01SPOILER
+        segments.push({ type: "spoiler", content });
+        remaining = remaining.substring(end + 9); // after \x01/SPOILER
+      }
+    } else if (remaining.startsWith("\x01LINK")) {
+      const sepIdx = remaining.indexOf("\x01LSEP");
+      const endIdx = remaining.indexOf("\x01/LINK");
+      if (sepIdx === -1 || endIdx === -1) {
+        segments.push({ type: "text", content: remaining.substring(1) });
+        remaining = "";
+      } else {
+        const linkText = remaining.substring(5, sepIdx);
+        const url = remaining.substring(sepIdx + 5, endIdx);
+        segments.push({ type: "link", text: linkText, url });
+        remaining = remaining.substring(endIdx + 6);
+      }
+    } else {
+      // Unknown sentinel — skip the \x01 and treat rest as text
+      segments.push({ type: "text", content: remaining.substring(1) });
+      remaining = "";
     }
-
-    // Escape remaining text
-    if (currentIndex < text.length) {
-      parts.push(this.escapeText(text.substring(currentIndex)));
-    }
-
-    return parts.join("");
   }
 
-  /**
-   * Escape special characters
-   */
-  private static escapeText(text: string): string {
-    let result = text;
-    for (const char of this.ESCAPE_CHARS) {
-      result = result.split(char).join(`\\${char}`);
-    }
-    return result;
+  // Render segments
+  return segments
+    .map((seg) => {
+      switch (seg.type) {
+        case "text":
+          return escapeText(seg.content);
+        case "bold":
+          return `*${resolveInner(seg.content)}*`;
+        case "italic":
+          return `_${resolveInner(seg.content)}_`;
+        case "strike":
+          return `~${resolveInner(seg.content)}~`;
+        case "spoiler":
+          return `||${resolveInner(seg.content)}||`;
+        case "link":
+          return `[${resolveInner(seg.text)}](${escapeUrl(seg.url)})`;
+        case "blockquote":
+          return `>${resolveInner(seg.content)}`;
+        case "hr":
+          return escapeText("———");
+      }
+    })
+    .join("");
+}
+
+/**
+ * Resolve inner content: if it contains sentinels (nested formatting),
+ * recurse; otherwise just escape.
+ */
+function resolveInner(text: string): string {
+  if (text.includes("\x01")) {
+    return resolveLine(text);
+  }
+  return escapeText(text);
+}
+
+// ─── Main pipeline ─────────────────────────────────────────────────
+
+/**
+ * Convert markdown text to Telegram MarkdownV2 format.
+ * Handles malformed/mismatched markers gracefully by escaping them.
+ */
+function formatForTelegram(text: string): string {
+  if (!text) return "";
+
+  // Step 1: Extract code blocks
+  const { text: withoutCode, store } = extractCode(text);
+
+  // Step 2: Normalize markdown → sentinels
+  const { text: normalized, escaped } = normalizeMarkdown(withoutCode);
+
+  // Step 3: Resolve sentinels → escaped text with formatting markers
+  // Process line by line to prevent cross-line formatting leaks
+  const lines = normalized.split("\n");
+  let formatted = lines.map((line) => resolveLine(line)).join("\n");
+
+  // Step 3.5: Restore pre-escaped characters
+  formatted = formatted.replace(/\x02(\d+)\x02/g, (_m, idx) => {
+    return `\\${escaped[Number(idx)]}`;
+  });
+
+  // Step 4: Restore code blocks
+  return restoreCode(formatted, store);
+}
+
+// ─── Public API (preserved for backwards compatibility) ────────────
+
+export class TelegramMarkdownV2Formatter {
+  static format(text: string): string {
+    return formatForTelegram(text);
   }
 
-  /**
-   * Restore code blocks
-   */
-  private static restoreCodeBlocks(
-    text: string,
-    blocks: Map<string, string>
-  ): string {
-    let result = text;
-    for (const [placeholder, code] of blocks.entries()) {
-      result = result.replace(placeholder, code);
-    }
-    return result;
+  static formatSmart(text: string): string {
+    return formatForTelegram(text);
   }
 
-  /**
-   * Calculate UTF-16 length
-   */
+  static escapeOnly(text: string): string {
+    if (!text) return "";
+    const { text: withoutCode, store } = extractCode(text);
+    const escaped = escapeText(withoutCode);
+    return restoreCode(escaped, store);
+  }
+
   static getUtf16Length(text: string): number {
     let length = 0;
     for (let i = 0; i < text.length; i++) {
@@ -251,9 +360,6 @@ export class TelegramMarkdownV2Formatter {
     return length;
   }
 
-  /**
-   * Strip formatting
-   */
   static stripFormatting(text: string): string {
     return text
       .replace(/```[\s\S]*?```/g, "")
@@ -271,17 +377,13 @@ export class TelegramMarkdownV2Formatter {
   }
 }
 
-/**
- * Helper functions
- */
-export function formatForTelegram(markdown: string): string {
-  return TelegramMarkdownV2Formatter.format(markdown);
+export { formatForTelegram };
+export function formatMarkdown(text: string): string {
+  return formatForTelegram(text);
 }
-
 export function escapeForTelegram(text: string): string {
-  return TelegramMarkdownV2Formatter["escapeText"](text);
+  return TelegramMarkdownV2Formatter.escapeOnly(text);
 }
-
 export function getUtf16Length(text: string): number {
   return TelegramMarkdownV2Formatter.getUtf16Length(text);
 }
