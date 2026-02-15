@@ -1,5 +1,5 @@
 import { createXai } from "@ai-sdk/xai";
-import { env } from "../config/env";
+import { env } from "../env";
 
 let cachedProvider: ReturnType<typeof createXai> | null = null;
 

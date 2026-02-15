@@ -1,5 +1,5 @@
 import type { LanguageModel } from "ai";
-import { env } from "../config/env";
+import { env } from "../env";
 import { anthropicModel } from "./anthropic";
 import { minimaxModel } from "./minimax";
 import { openaiModel } from "./openai";

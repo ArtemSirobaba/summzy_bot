@@ -1,17 +1,19 @@
 import type { Context } from "grammy";
 import { env } from "../config/env";
-import { answerAboutDocument } from "../services/ai";
+import { generateAgentReply } from "../services/ai";
 import {
   addAssistantTurn,
   addUserTurn,
   getSession,
 } from "../services/session-store";
-import { summarizeFromUrl } from "./summarize";
-import { sanitizeAssistantOutput } from "../utils/assistant-output";
-import { chunkText } from "../utils/chunk";
+import {
+  canProcessAiMessage,
+  formatAiThrottleMessage,
+  recordProcessedAiMessage,
+} from "../services/summary-throttle";
 import { isGroupChatType } from "../utils/chat-mode";
+import { chunkText } from "../utils/chunk";
 import { replyMarkdownV2WithFallback } from "../utils/telegram-format";
-import { extractFirstUrl } from "../utils/url";
 
 function logHandlerError(scope: string, error: unknown): void {
   if (error instanceof Error) {
@@ -30,11 +32,54 @@ async function replyInChunks(ctx: Context, text: string): Promise<void> {
   }
 }
 
+function isAdminUser(userId: number): boolean {
+  return env.TELEGRAM_ADMIN_USER_IDS.includes(userId);
+}
+
+function hasBotMention(text: string, username?: string): boolean {
+  if (!username) {
+    return false;
+  }
+
+  const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const mentionMatcher = new RegExp(`(?:^|\\s)@${escaped}(?:\\s|$)`, "i");
+  return mentionMatcher.test(text);
+}
+
+function stripBotMention(text: string, username?: string): string {
+  if (!username) {
+    return text.trim();
+  }
+
+  const escaped = username.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const mentionMatcher = new RegExp(`@${escaped}\\b`, "gi");
+  return text
+    .replace(mentionMatcher, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function shouldProcessInCurrentChat(ctx: Context, text: string): boolean {
+  if (!isGroupChatType(ctx.chat?.type)) {
+    return true;
+  }
+
+  const botId = ctx.me.id;
+  const replyToBot = ctx.message?.reply_to_message?.from?.id === botId;
+  if (replyToBot) {
+    return true;
+  }
+
+  return hasBotMention(text, ctx.me.username);
+}
+
 export async function handleMessage(ctx: Context): Promise<void> {
   const text = ctx.message?.text?.trim();
   const chatId = ctx.chat?.id;
+  const userId = ctx.from?.id;
+  let processingMessageId: number | undefined;
 
-  if (!text || !chatId) {
+  if (!text || !chatId || !userId) {
     return;
   }
 
@@ -42,51 +87,53 @@ export async function handleMessage(ctx: Context): Promise<void> {
     return;
   }
 
-  const url = extractFirstUrl(text);
-
-  if (url) {
-    if (isGroupChatType(ctx.chat?.type)) {
-      await ctx.reply("In groups, use /summzy <url> to request a summary.");
-      return;
-    }
-
-    await summarizeFromUrl(ctx, url);
+  if (!shouldProcessInCurrentChat(ctx, text)) {
     return;
   }
 
-  const session = getSession(chatId);
+  const normalizedUserMessage = isGroupChatType(ctx.chat?.type)
+    ? stripBotMention(text, ctx.me.username)
+    : text;
 
-  if (!session) {
-    await ctx.reply(
-      "Send me a URL first. I will summarize it and then we can chat about that document."
-    );
+  if (!normalizedUserMessage) {
     return;
   }
 
+  const throttle = canProcessAiMessage(userId, isAdminUser(userId));
+  if (!throttle.allowed) {
+    await ctx.reply(formatAiThrottleMessage(throttle.retryAfterMs ?? 0));
+    return;
+  }
+
+  processingMessageId = (await ctx.reply("Processing...")).message_id;
   await ctx.api.sendChatAction(chatId, "typing");
-  addUserTurn(chatId, text);
 
   try {
-    const activeSession = getSession(chatId);
-    if (!activeSession) {
-      await ctx.reply("Chat session is no longer active. Send a URL to begin again.");
-      return;
-    }
-
-    const answer = sanitizeAssistantOutput(
-      await answerAboutDocument(activeSession, text)
-    );
-    addAssistantTurn(chatId, answer);
+    const history = getSession(chatId)?.history ?? [];
+    const answer = await generateAgentReply(history, normalizedUserMessage);
 
     if (answer) {
+      addUserTurn(chatId, normalizedUserMessage);
+      addAssistantTurn(chatId, answer);
+      recordProcessedAiMessage(userId);
       await replyInChunks(ctx, answer);
     } else {
       await ctx.reply(
-        "I could not produce an answer from the current context. Please rephrase your question."
+        "I could not generate a useful answer right now. Please rephrase your message."
       );
     }
   } catch (error) {
-    logHandlerError("qa", error);
-    await ctx.reply("Failed to answer your question right now. Please try again.");
+    logHandlerError("agent", error);
+    await ctx.reply(
+      "Failed to process your message right now. Please try again."
+    );
+  } finally {
+    if (processingMessageId !== undefined) {
+      try {
+        await ctx.api.deleteMessage(chatId, processingMessageId);
+      } catch (cleanupError) {
+        logHandlerError("processing-message-cleanup", cleanupError);
+      }
+    }
   }
 }

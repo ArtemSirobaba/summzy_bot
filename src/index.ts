@@ -1,5 +1,5 @@
 import { createBot } from "./bot/createBot";
-import { getAvailableModels } from "./models";
+import { getAvailableModels } from "./config/models";
 import { getActiveModel } from "./services/ai";
 
 const bot = createBot();

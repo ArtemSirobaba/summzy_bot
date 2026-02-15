@@ -6,7 +6,6 @@ import {
   clearSession,
   getSession,
   hasSession,
-  replaceSession,
 } from "../src/services/session-store";
 
 const SESSION_TTL_MS = 6 * 60 * 60 * 1000;
@@ -19,7 +18,7 @@ test("session expires after ttl", () => {
   try {
     const chatId = 551001;
     clearSession(chatId);
-    replaceSession(chatId, "https://example.com", "doc", "summary");
+    addUserTurn(chatId, "hello");
     assert.equal(hasSession(chatId), true);
 
     now += SESSION_TTL_MS + 1;
@@ -30,10 +29,9 @@ test("session expires after ttl", () => {
   }
 });
 
-test("session history is bounded and ignores empty summary seed", () => {
+test("session history is bounded", () => {
   const chatId = 551002;
   clearSession(chatId);
-  replaceSession(chatId, "https://example.com", "doc", "");
 
   for (let index = 0; index < 40; index += 1) {
     addUserTurn(chatId, `q-${index}`);

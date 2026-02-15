@@ -1,5 +1,5 @@
 import { createMinimax } from "vercel-minimax-ai-provider";
-import { env } from "../config/env";
+import { env } from "../env";
 
 let cachedProvider: ReturnType<typeof createMinimax> | null = null;
 

@@ -1,5 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { env } from "../config/env";
+import { env } from "../env";
 
 let cachedProvider: ReturnType<typeof createOpenAICompatible> | null = null;
 

@@ -1,5 +1,5 @@
 import { createOpenAI } from "@ai-sdk/openai";
-import { env } from "../config/env";
+import { env } from "../env";
 
 let cachedProvider: ReturnType<typeof createOpenAI> | null = null;
 

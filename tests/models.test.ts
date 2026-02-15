@@ -3,7 +3,7 @@ import test from "node:test";
 import {
   getAvailableModelsForConfig,
   getDefaultModelForConfig,
-} from "../src/models";
+} from "../src/config/models";
 
 test("model registry exposes only configured providers", () => {
   const models = getAvailableModelsForConfig({

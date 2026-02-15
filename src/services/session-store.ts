@@ -45,25 +45,23 @@ function trimHistory(history: ChatTurn[]): ChatTurn[] {
   return history.slice(-MAX_HISTORY_TURNS);
 }
 
-export function replaceSession(
-  chatId: number,
-  sourceUrl: string,
-  extractedContent: string,
-  summary: string
-): ChatSession {
+function createEmptySession(chatId: number): ChatSession {
   pruneExpiredSessions();
   const now = Date.now();
-  const history = summary ? [newTurn("assistant", summary)] : [];
-  const session: ChatSession = {
+  return {
     chatId,
-    sourceUrl,
-    extractedContent,
-    summary,
-    history,
+    history: [],
     createdAt: now,
     updatedAt: now,
   };
+}
 
+function getOrCreateSession(chatId: number): ChatSession {
+  const existing = getSession(chatId);
+  if (existing) {
+    return existing;
+  }
+  const session = createEmptySession(chatId);
   sessions.set(chatId, session);
   pruneOldestSessions();
   return session;
@@ -83,11 +81,7 @@ export function clearSession(chatId: number): boolean {
 }
 
 export function addUserTurn(chatId: number, content: string): ChatSession | undefined {
-  const session = getSession(chatId);
-  if (!session) {
-    return undefined;
-  }
-
+  const session = getOrCreateSession(chatId);
   session.history.push(newTurn("user", content));
   session.history = trimHistory(session.history);
   session.updatedAt = Date.now();
@@ -98,11 +92,7 @@ export function addAssistantTurn(
   chatId: number,
   content: string
 ): ChatSession | undefined {
-  const session = getSession(chatId);
-  if (!session) {
-    return undefined;
-  }
-
+  const session = getOrCreateSession(chatId);
   session.history.push(newTurn("assistant", content));
   session.history = trimHistory(session.history);
   session.updatedAt = Date.now();

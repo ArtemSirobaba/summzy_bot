@@ -1,4 +1,4 @@
-const NON_ADMIN_SUMMARY_LIMIT = 1;
+const NON_ADMIN_AI_MESSAGE_LIMIT = 5;
 const NON_ADMIN_WINDOW_MS = 60 * 60 * 1000;
 const MAX_TRACKED_USERS = 10000;
 
@@ -44,7 +44,7 @@ function pruneOverflow(maxEntries: number = MAX_TRACKED_USERS): void {
   }
 }
 
-export function canSummarize(
+export function canProcessAiMessage(
   userId: number,
   isAdmin: boolean,
   now: number = Date.now()
@@ -56,7 +56,7 @@ export function canSummarize(
   pruneOld(now);
 
   const entry = summaryWindows.get(userId);
-  if (!entry || entry.timestamps.length < NON_ADMIN_SUMMARY_LIMIT) {
+  if (!entry || entry.timestamps.length < NON_ADMIN_AI_MESSAGE_LIMIT) {
     return { allowed: true };
   }
 
@@ -66,7 +66,10 @@ export function canSummarize(
   return { allowed: false, retryAfterMs };
 }
 
-export function recordSummary(userId: number, now: number = Date.now()): void {
+export function recordProcessedAiMessage(
+  userId: number,
+  now: number = Date.now()
+): void {
   pruneOld(now);
 
   const entry = summaryWindows.get(userId) ?? {
@@ -88,13 +91,13 @@ export function recordSummary(userId: number, now: number = Date.now()): void {
   pruneOverflow();
 }
 
-export function formatSummaryThrottleMessage(retryAfterMs: number): string {
+export function formatAiThrottleMessage(retryAfterMs: number): string {
   const minutes = Math.max(1, Math.ceil(retryAfterMs / 60000));
   const suffix = minutes === 1 ? "minute" : "minutes";
-  return `Summary limit reached for non-admin users (1 per hour). Try again in about ${minutes} ${suffix}.`;
+  return `AI message limit reached for non-admin users (${NON_ADMIN_AI_MESSAGE_LIMIT} per hour). Try again in about ${minutes} ${suffix}.`;
 }
 
-export function resetSummaryThrottle(userId?: number): void {
+export function resetAiThrottle(userId?: number): void {
   if (typeof userId === "number") {
     summaryWindows.delete(userId);
     return;
@@ -103,4 +106,4 @@ export function resetSummaryThrottle(userId?: number): void {
   summaryWindows.clear();
 }
 
-export { NON_ADMIN_SUMMARY_LIMIT, NON_ADMIN_WINDOW_MS };
+export { NON_ADMIN_AI_MESSAGE_LIMIT, NON_ADMIN_WINDOW_MS };

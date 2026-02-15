@@ -1,5 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { env } from "../config/env";
+import { env } from "../env";
 
 let cachedProvider: ReturnType<typeof createAnthropic> | null = null;
 

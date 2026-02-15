@@ -1,12 +1,12 @@
-import { generateText } from "ai";
-import { getDefaultModel, getModelByDescriptor, type ModelDescriptor } from "../models";
+import { generateText, stepCountIs } from "ai";
 import {
-  buildGroundedAnswerPrompt,
-  buildSummaryPrompt,
-  GROUNDED_QA_SYSTEM_PROMPT,
-  SUMMARY_SYSTEM_PROMPT,
-} from "../prompts/system";
-import type { ChatSession } from "../types/chat";
+  getDefaultModel,
+  getModelByDescriptor,
+  type ModelDescriptor,
+} from "../config/models";
+import { AGENT_SYSTEM_PROMPT } from "../prompts/system";
+import type { ChatTurn } from "../types/chat";
+import { createWebTools } from "../web-tools";
 
 const activeModelDescriptor = getDefaultModel();
 const activeLanguageModel = getModelByDescriptor(activeModelDescriptor);
@@ -15,27 +15,40 @@ export function getActiveModel(): ModelDescriptor {
   return activeModelDescriptor;
 }
 
-export async function summarizeDocument(
-  content: string,
-  url: string
+const webTools = createWebTools();
+
+export async function generateAgentReply(
+  history: ChatTurn[],
+  userMessage: string
 ): Promise<string> {
   const result = await generateText({
     model: activeLanguageModel,
-    system: SUMMARY_SYSTEM_PROMPT,
-    prompt: buildSummaryPrompt(url, content),
-  });
-
-  return result.text.trim();
-}
-
-export async function answerAboutDocument(
-  session: ChatSession,
-  question: string
-): Promise<string> {
-  const result = await generateText({
-    model: activeLanguageModel,
-    system: GROUNDED_QA_SYSTEM_PROMPT,
-    prompt: buildGroundedAnswerPrompt(session, question),
+    prepareStep: async ({ messages }) => {
+      if (messages.length > 20) {
+        return {
+          messages: [messages[0], ...messages.slice(-20)],
+        };
+      }
+      return {
+        messages,
+      };
+    },
+    stopWhen: [stepCountIs(25)],
+    messages: [
+      {
+        role: "system",
+        content: AGENT_SYSTEM_PROMPT,
+      },
+      ...history.map((turn) => ({
+        role: turn.role,
+        content: turn.content,
+      })),
+      {
+        role: "user",
+        content: userMessage,
+      },
+    ],
+    tools: webTools,
   });
 
   return result.text.trim();

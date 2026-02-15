@@ -8,9 +8,6 @@ export interface ChatTurn {
 
 export interface ChatSession {
   chatId: number;
-  sourceUrl: string;
-  extractedContent: string;
-  summary: string;
   history: ChatTurn[];
   createdAt: number;
   updatedAt: number;
